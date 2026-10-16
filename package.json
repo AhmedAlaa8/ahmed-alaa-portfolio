@@ -1,0 +1,24 @@
+{
+  "name": "ahmed-alaa-portfolio",
+  "version": "3.0.0",
+  "private": true,
+  "scripts": {
+    "build": "next build --webpack",
+    "dev": "next dev",
+    "test": "node --test tests/*.test.mjs"
+  },
+  "dependencies": {
+    "next": "16.3.8",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "motion": "14.0.0",
+    "@fontsource/barlow-condensed": "^5.2.7",
+    "@fontsource/manrope": "^5.2.8",
+    "@fontsource/tajawal": "^5.2.7",
+    "three": "0.186.0",
+    "lucide-react": "^0.468.0",
+    "@fontsource/bodoni-moda": "^5.2.6",
+    "@fontsource/cormorant-garamond": "^5.2.6",
+    "flag-icons": "^7.5.0"
+  }
+}

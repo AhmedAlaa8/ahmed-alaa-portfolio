@@ -1,0 +1,30 @@
+# Own project + own default network: nothing here touches the local-dev (eddekhar) stack
+# or the sibling ahmed-alaa-portfolio project (3010/3011).
+# Ports 3000-3002 belong to the gateway, frontend and landing.
+name: ahmed-alaa-portfolio1
+
+services:
+  web:
+    build:
+      context: .
+      target: web
+    ports:
+      - "3020:80"
+    restart: unless-stopped
+
+  # Hot-reload dev server, opt-in: docker compose --profile dev up dev
+  dev:
+    profiles: ["dev"]
+    image: node:24-alpine
+    working_dir: /app
+    command: sh -c "npm ci && npx next dev -H 0.0.0.0 -p 3000"
+    environment:
+      WATCHPACK_POLLING: "true"
+      CHOKIDAR_USEPOLLING: "true"
+    ports:
+      - "3021:3000"
+    volumes:
+      - .:/app
+      # Container-only copies so the host's node_modules/.next stay untouched.
+      - /app/node_modules
+      - /app/.next
