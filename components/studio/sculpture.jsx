@@ -13,6 +13,7 @@ export default function Sculpture({palette,motion,locale}){
  const [ready,setReady]=useState(false),[unavailable,setUnavailable]=useState(false),[stage,setStage]=useState(1);
  const view=useRef({stage,focused});view.current={stage,focused};
  useEffect(()=>{let disposed=false,started=false,visible=false,lite=false,idle=0,cleanup=()=>{};
+  setReady(false);setUnavailable(false);
   const start=async()=>{if(started)return;started=true;let renderer,model,environment,shadow,shadowTexture;
    try{
     const T=await import('../../lib/three-subset.mjs');if(disposed)return;
@@ -32,9 +33,10 @@ export default function Sculpture({palette,motion,locale}){
     const key=new T.DirectionalLight('#ffffff',4);key.position.set(-3,5,6);scene.add(key);
     const rim=new T.DirectionalLight('#aac8ff',2.4);rim.position.set(4,2,-3);scene.add(rim);
     // Bake a small reflection map once. No HDR download or per-frame reflection rendering.
-    const room=new T.Scene();room.background=new T.Color('#c8ced8');const roomGeo=new T.PlaneGeometry(5,5),roomMats=[];
+    const bakeEnvironment=()=>{const room=new T.Scene();room.background=new T.Color('#c8ced8');const roomGeo=new T.PlaneGeometry(5,5),roomMats=[];
     [[-4,3,2],[3,4,-2],[0,-4,2]].forEach((p,i)=>{const material=new T.MeshBasicMaterial({color:i===1?'#a6bce5':'#ffffff'});roomMats.push(material);const mesh=new T.Mesh(roomGeo,material);mesh.position.set(...p);mesh.lookAt(0,0,0);room.add(mesh);});
-    const pmrem=new T.PMREMGenerator(renderer);environment=pmrem.fromScene(room,.12,.1,20,{size:64});scene.environment=environment.texture;scene.environmentIntensity=.7;pmrem.dispose();roomGeo.dispose();roomMats.forEach(m=>m.dispose());
+    const pmrem=new T.PMREMGenerator(renderer);const map=pmrem.fromScene(room,.12,.1,20,{size:64});pmrem.dispose();roomGeo.dispose();roomMats.forEach(m=>m.dispose());return map;};
+    environment=bakeEnvironment();scene.environment=environment.texture;scene.environmentIntensity=.7;
     const c=document.createElement('canvas');c.width=c.height=128;const context=c.getContext('2d'),gradient=context.createRadialGradient(64,64,5,64,64,62);gradient.addColorStop(0,'rgba(25,34,52,0.18)');gradient.addColorStop(1,'rgba(25,34,52,0)');context.fillStyle=gradient;context.fillRect(0,0,128,128);
     shadowTexture=new T.CanvasTexture(c);shadow=new T.Mesh(new T.PlaneGeometry(3.7,2),new T.MeshBasicMaterial({map:shadowTexture,transparent:true,depthWrite:false}));shadow.rotation.x=-Math.PI/2;shadow.position.y=-1.62;scene.add(shadow);
     const reduce=matchMedia('(prefers-reduced-motion: reduce)');let raf=0,last=0,seconds=0,tx=0,ty=0,x=0,y=0,lost=false,down=null,slow=0,warm=0;
@@ -51,11 +53,13 @@ export default function Sculpture({palette,motion,locale}){
     const leave=()=>{tx=ty=0;},pointerDown=e=>{down={x:e.clientX,y:e.clientY};};
     const ray=new T.Raycaster(),cursor=new T.Vector2();
     const pick=e=>{if(down&&e.detail!==0&&Math.hypot(e.clientX-down.x,e.clientY-down.y)>8)return;if(view.current.focused){setFocused(false);model.setStage(view.current.stage,false);wake();return;}if(e.detail===0){setFocused(true);setStage(current=>(current+1)%4);return;}if(down&&Math.hypot(e.clientX-down.x,e.clientY-down.y)>8)return;const r=node.getBoundingClientRect();cursor.set((e.clientX-r.left)/r.width*2-1,-((e.clientY-r.top)/r.height)*2+1);ray.setFromCamera(cursor,camera);const hit=ray.intersectObjects(model.nodes,true)[0];if(hit){let object=hit.object;while(object&&object.userData.service===undefined)object=object.parent;if(object){model.setStage(object.userData.service,true);setStage(object.userData.service);setFocused(true);wake();}}else {setFocused(true);setStage(current=>(current+1)%4);}};
-    const onLost=e=>{e.preventDefault();lost=true;cancelAnimationFrame(raf);setUnavailable(true);};
-    const events=[['pointermove',pointer],['pointerleave',leave],['pointerup',leave],['pointercancel',leave],['pointerdown',pointerDown],['click',pick]];events.forEach(([event,handler])=>node.addEventListener(event,handler));renderer.domElement.addEventListener('webglcontextlost',onLost);document.addEventListener('visibilitychange',wake);reduce.addEventListener('change',wake);
+    const onLost=e=>{e.preventDefault();lost=true;cancelAnimationFrame(raf);environment.dispose();scene.environment=null;setUnavailable(true);};
+    // Rebuild GPU resources after restoration, including the baked reflection map.
+    const onRestored=()=>{if(disposed)return;environment=bakeEnvironment();scene.environment=environment.texture;lost=false;setUnavailable(false);wake();};
+    const events=[['pointermove',pointer],['pointerleave',leave],['pointerup',leave],['pointercancel',leave],['pointerdown',pointerDown],['click',pick]];events.forEach(([event,handler])=>node.addEventListener(event,handler));renderer.domElement.addEventListener('webglcontextlost',onLost);renderer.domElement.addEventListener('webglcontextrestored',onRestored);document.addEventListener('visibilitychange',wake);reduce.addEventListener('change',wake);
     const refreshLabels=()=>{const current=state.current,color=current.palette==='camel'?'#8f5a30':'#2456db';model.setLabels(createServiceLabels(T,serviceOrbitContent[current.locale==='ar'?'ar':'en'].services,color));wake();};
-    engine.current={wake,color(v){model.setColor(v==='camel'?'#8f5a30':'#2456db');refreshLabels();},labels:refreshLabels,stage(v,focus=false){model.setStage(v,focus);wake();}};engine.current.color(state.current.palette);document.fonts?.ready.then(()=>{if(!disposed&&!lost)engine.current?.labels();});setReady(true);
-    cleanup=()=>{cancelAnimationFrame(raf);resize.disconnect();events.forEach(([event,handler])=>node.removeEventListener(event,handler));document.removeEventListener('visibilitychange',wake);reduce.removeEventListener('change',wake);renderer.domElement.removeEventListener('webglcontextlost',onLost);model.dispose();environment.dispose();shadowTexture.dispose();shadow.geometry.dispose();shadow.material.dispose();renderer.dispose();renderer.domElement.remove();engine.current=null;};wake();
+    engine.current={wake,color(v){model.setColor(v==='camel'?'#8f5a30':'#2456db');refreshLabels();},labels:refreshLabels,stage(v,focus=false){model.setStage(v,focus);wake();}};model.setStage(view.current.stage,view.current.focused);engine.current.color(state.current.palette);document.fonts?.ready.then(()=>{if(!disposed&&!lost)engine.current?.labels();});setReady(true);
+    cleanup=()=>{cancelAnimationFrame(raf);resize.disconnect();events.forEach(([event,handler])=>node.removeEventListener(event,handler));document.removeEventListener('visibilitychange',wake);reduce.removeEventListener('change',wake);renderer.domElement.removeEventListener('webglcontextlost',onLost);renderer.domElement.removeEventListener('webglcontextrestored',onRestored);model.dispose();environment.dispose();shadowTexture.dispose();shadow.geometry.dispose();shadow.material.dispose();renderer.dispose();renderer.domElement.remove();engine.current=null;};wake();
    }catch{model?.dispose();environment?.dispose();shadowTexture?.dispose();shadow?.geometry.dispose();shadow?.material.dispose();renderer?.dispose();renderer?.domElement.remove();if(!disposed)setUnavailable(true);}
   };
   // three.js is the largest download on the page: fetch it only after the page has loaded and gone idle,
