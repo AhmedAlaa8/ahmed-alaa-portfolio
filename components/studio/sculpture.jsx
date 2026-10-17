@@ -17,7 +17,7 @@ export default function Sculpture({palette,motion,locale}){
    try{
     const T=await import('../../lib/three-subset.mjs');if(disposed)return;
     const node=host.current;
-    // A software-rendered context (no usable GPU) draws one still frame instead of animating at 30 fps.
+    // Software rendering uses a lower resolution and frame rate while keeping motion available.
     // Chrome does not always flag SwiftShader as a performance caveat, so the renderer name is checked too.
     const canvas=document.createElement('canvas'),available=createWebGLContext(canvas);
     if(!available){setUnavailable(true);return;}
@@ -38,11 +38,11 @@ export default function Sculpture({palette,motion,locale}){
     const c=document.createElement('canvas');c.width=c.height=128;const context=c.getContext('2d'),gradient=context.createRadialGradient(64,64,5,64,64,62);gradient.addColorStop(0,'rgba(25,34,52,0.18)');gradient.addColorStop(1,'rgba(25,34,52,0)');context.fillStyle=gradient;context.fillRect(0,0,128,128);
     shadowTexture=new T.CanvasTexture(c);shadow=new T.Mesh(new T.PlaneGeometry(3.7,2),new T.MeshBasicMaterial({map:shadowTexture,transparent:true,depthWrite:false}));shadow.rotation.x=-Math.PI/2;shadow.position.y=-1.62;scene.add(shadow);
     const reduce=matchMedia('(prefers-reduced-motion: reduce)');let raf=0,last=0,seconds=0,tx=0,ty=0,x=0,y=0,lost=false,down=null,slow=0,warm=0;
-    const allowed=()=>visible&&!document.hidden&&state.current.motion&&!reduce.matches&&!lost&&!lite;
-    const draw=(now=0)=>{raf=0;if(disposed||lost)return;const delta=last?Math.max(0,(now-last)/1000):0,move=allowed();if(delta<1/30&&last&&move){raf=requestAnimationFrame(draw);return;}
-     // Safety net for weak GPUs the name check misses: several consecutive frames over 120 ms → still mode.
+    const allowed=()=>visible&&!document.hidden&&state.current.motion&&!reduce.matches&&!lost;
+    const draw=(now=0)=>{raf=0;if(disposed||lost)return;const delta=last?Math.max(0,(now-last)/1000):0,move=allowed();if(delta<1/(lite?15:30)&&last&&move){raf=requestAnimationFrame(draw);return;}
+     // Several consecutive frames over 120 ms switch weak GPUs to the lower frame rate.
      // The first frames are skipped: shader compilation and label uploads make them slow on any GPU.
-     if(move&&last&&++warm>15){slow=delta>.12?slow+1:0;if(slow>=4){lite=true;renderer.setPixelRatio(1);}}last=now;if(move)seconds+=Math.min(delta,.06);x+=(tx-x)*(move?.13:1);y+=(ty-y)*(move?.13:1);
+     if(move&&!lite&&last&&++warm>15){slow=delta>.12?slow+1:0;if(slow>=4){lite=true;renderer.setPixelRatio(1);}}last=now;if(move)seconds+=Math.min(delta,.1);x+=(tx-x)*(move?.13:1);y+=(ty-y)*(move?.13:1);
      model.group.rotation.set(y+(move?Math.sin(seconds*.6)*.018:0),x+(move?Math.sin(seconds*.4)*.055:0),move?Math.sin(seconds*.5)*.012:0);model.group.position.y=move?Math.sin(seconds*.65)*.024:0;model.tick(seconds,move,delta);renderer.render(scene,camera);if(move)raf=requestAnimationFrame(draw);
     };
     const wake=()=>{cancelAnimationFrame(raf);last=0;draw(performance.now());};

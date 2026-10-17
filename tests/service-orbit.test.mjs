@@ -3,6 +3,15 @@ import assert from 'node:assert/strict';
 import * as Three from 'three';
 import {createServiceOrbit} from '../lib/create-service-orbit.mjs';
 
+test('lower frame rates keep the orbit moving at the same speed',()=>{
+ const normal=createServiceOrbit(Three),lite=createServiceOrbit(Three);
+ try{
+  for(let i=0;i<30;i++)normal.tick(i/30,true,1/30);
+  for(let i=0;i<15;i++)lite.tick(i/15,true,1/15);
+  normal.rings.forEach((ring,i)=>assert.ok(Math.abs(ring.rotation.z-lite.rings[i].rotation.z)<1e-8));
+ }finally{normal.dispose();lite.dispose();}
+});
+
 test('both rings rotate while idle and stay still with motion disabled',()=>{
  const model=createServiceOrbit(Three);
  try{
